@@ -1,0 +1,176 @@
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbweNNkjGhfmx0iAFCAY4BItRJkx-sz5LgYj__EZTa_ZbnVO8A2L6G2-TSRSJuXcWbsF/exec";
+    const folderLinkBase = "https://lh3.googleusercontent.com/u/0/d/";
+    
+    const imageIds = [
+        "1m198Xuct6TQuOtBTXQx2IFILDNXYGGyO", "1WtVv5mHkD_91dFG5mxljEosxP5t-k173", "1Ejo4uGMhOM-M4VO7tuVo5NnH6vfcrOJ-", 
+        "1vyKyW-7X1tFaJrQQ1elWCQUkubvdIBw2", "13jMn79V8-XX4u_uDyVnRyYT2_YQxnj1N", "134fHvJH4h6IZdtfSD38WDwhnfJvu1rtr",
+        "15MHxe_VxkRf5-_LiR7XYFx-JOk4ZIirI", "12lPF5NZzqEzQ8b3xkryQozu7ALAUnfdU", "1AcSCwwU79uVjAI5UoO4LfB0rZQMjkrFa",
+        "1zdQz7-B2-7X7x6MgWfgJUyYlYtgrZAvm", "1gXi8FoptPu_ELkW5K242dWmhSVp3lyMy", "1PgB6UQilthusXFrme_gqVTmM_E2i6oZ6",
+        "18mDtXFV2_D-kvoURGlb2iw1AqX8AItLh", "17czRE9i_258T5wiMixfv_0yxyHGqx6EV", "15kTbBo9ISngjnN0THDSecAiO5NY45c88",
+        "1EMU3-lbPU0f1BJwL1BxNRAX9a8kPIPuy", "1AYwUpU-ToFXSvj_CqwbNN-ybzsHe4HjZ", "1nszGqK_5k_rhqhd68YCVRqZIIJoT9G-X",
+        "1MXvb477skmSPhynWpvhktTrRbrh420VG", "1WBLs5HSsWzX3qUV_5M9mMCKw65yu_SEw"
+    ];
+
+    const imagePool = imageIds.map(id => folderLinkBase + id);
+    let currentCondition = 4;
+    let participantId = "";
+    let phase = 1; 
+    let currentTrial = 0;
+    
+    // Arrays to store ratings in order of Image 1, Image 2, etc.
+    let preRatings = new Array(20).fill(null);
+    let postRatings = new Array(20).fill(null);
+    let presentedAverages = new Array(20).fill(null);
+    
+    // We store the actual image object {url, originalIndex} to track identity during shuffle
+    let trialQueue = [];
+
+    document.getElementById('btn-start').onclick = async function() {
+        this.disabled = true;
+        this.innerText = "Connecting...";
+        
+        try {
+            const response = await fetch(SCRIPT_URL);
+            const data = await response.json();
+            currentCondition = data.condition;
+        } catch (e) { console.error("Server fetch failed"); }
+
+        participantId = document.getElementById('participant-id').value.trim() || "ID_" + Math.random().toString(36).substr(2, 6).toUpperCase();
+        
+        // Phase 1: Fixed Order
+        trialQueue = imagePool.map((url, index) => ({ url, originalIndex: index }));
+        
+        document.getElementById('screen-welcome').classList.add('hidden');
+        document.getElementById('screen-task').classList.remove('hidden');
+        runTrial();
+    };
+
+    function runTrial() {
+        // Reset UI visibility
+        document.getElementById('rating-container').classList.add('hidden');
+        document.getElementById('feedback-area').classList.add('hidden');
+        document.getElementById('stimulus-image').classList.add('hidden');
+        document.getElementById('instruction-text').innerText = "";
+        
+        // Load image from the current queue object
+        document.getElementById('stimulus-image').src = trialQueue[currentTrial].url;
+        document.getElementById('stimulus-image').classList.remove('hidden');
+        
+        setTimeout(() => {
+            document.getElementById('stimulus-image').classList.add('hidden');
+            document.getElementById('instruction-text').innerText = "Please rate the image you just saw:";
+            document.getElementById('rating-container').classList.remove('hidden');
+        }, 2000);
+    }
+
+    function handleRating(score) {
+        const originalIndex = trialQueue[currentTrial].originalIndex;
+        document.getElementById('rating-container').classList.add('hidden');
+        
+        if (phase === 1) {
+            preRatings[originalIndex] = score; // Saved to its correct image slot
+            showFeedback(score, originalIndex);
+        } else {
+            postRatings[originalIndex] = score; // Saved to its correct image slot
+            nextTrial();
+        }
+    }
+
+    function showFeedback(userRating, originalIndex) {
+        const fb = document.getElementById('feedback-area');
+        fb.innerHTML = "";
+        const leanHigh = (userRating <= 5);
+        let avgScore = leanHigh ? (Math.floor(Math.random() * 5) + 6) : (Math.floor(Math.random() * 5) + 1);
+
+        if (currentCondition === 4) {
+            presentedAverages[originalIndex] = "N/A";
+            setTimeout(nextTrial, 1000);
+            return;
+        }
+
+        fb.classList.remove('hidden');
+
+        // Condition 2 and 3: Show Average
+        if (currentCondition === 2 || currentCondition === 3) {
+            presentedAverages[originalIndex] = avgScore; // Saved to correct slot
+            const avgDiv = document.createElement('div');
+            avgDiv.innerText = `Average Peer Rating: ${avgScore}`;
+            fb.appendChild(avgDiv);
+        } else {
+            presentedAverages[originalIndex] = "N/A";
+        }
+
+        // Show Distribution (Condition 1 and 3)
+        if (currentCondition === 1 || currentCondition === 3) {
+            // [Distribution Logic remains same...]
+            // It generates visually based on 'leanHigh' determined by the user's rating
+            renderDistribution(fb, leanHigh);
+        }
+
+        setTimeout(nextTrial, 2000);
+    }
+
+    function renderDistribution(container, leanHigh) {
+        const distContainer = document.createElement('div');
+        distContainer.className = 'distribution-container';
+        const columns = Array.from({ length: 10 }, () => []);
+        for (let i = 0; i < 25; i++) {
+            let s;
+            const bias = Math.random() > 0.2;
+            if (leanHigh) { s = bias ? (Math.floor(Math.random()*5)+6) : (Math.floor(Math.random()*5)+1); }
+            else { s = bias ? (Math.floor(Math.random()*5)+1) : (Math.floor(Math.random()*5)+6); }
+            columns[s-1].push(1);
+        }
+        columns.forEach(colDots => {
+            const colDiv = document.createElement('div');
+            colDiv.className = 'dist-column';
+            colDots.forEach(() => {
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                colDiv.appendChild(dot);
+            });
+            distContainer.appendChild(colDiv);
+        });
+        container.appendChild(distContainer);
+        const labels = document.createElement('div');
+        labels.className = 'axis-labels';
+        labels.innerHTML = '<span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>';
+        container.appendChild(labels);
+    }
+
+    function nextTrial() {
+        currentTrial++;
+        if (currentTrial < 20) {
+            runTrial();
+        } else if (phase === 1) {
+            phase = 2; 
+            currentTrial = 0;
+            // SHUFFLE for Phase 2, but originalIndex stays with the image
+            trialQueue = trialQueue.sort(() => Math.random() - 0.5);
+            alert("Phase 1 complete. Press OK to continue.");
+            runTrial();
+        } else {
+            submitData();
+        }
+    }
+
+    function submitData() {
+        document.getElementById('screen-task').classList.add('hidden');
+        document.getElementById('screen-end').classList.remove('hidden');
+
+        fetch(SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            body: JSON.stringify({
+                Participant_ID: participantId,
+                Condition: "Cond_" + currentCondition,
+                Image_Pre_Ratings: preRatings.join(","),
+                Image_Post_Ratings: postRatings.join(","),
+                Average_Presented: presentedAverages.join(",")
+            })
+        }).then(() => {
+            document.getElementById('status-message').innerText = "Data successfully saved. Thank you!";
+        });
+    }
+</script>
