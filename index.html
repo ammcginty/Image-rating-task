@@ -1,237 +1,191 @@
-<!DOCTYPE html> 
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Image Rating Task</title>
-    <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: black; color: white; font-family: Arial, sans-serif; overflow: hidden; display: flex; justify-content: center; align-items: center; }
-        #ui-container { text-align: center; max-width: 80%; }
-        .hidden { display: none; }
-        #stimulus-image { max-width: 90vw; max-height: 80vh; object-fit: contain; border: 2px solid #333; }
-        input, button { padding: 10px; font-size: 1.2rem; margin: 10px; border-radius: 5px; cursor: pointer; }
-        .rating-btn { width: 50px; height: 50px; margin: 5px; cursor: pointer; background: #444; color: white; border: 1px solid #666; }
-        .rating-btn:hover { background: #666; }
-        #feedback-area { font-size: 1.2rem; margin-top: 20px; font-weight: bold; color: #00ff00; display: flex; flex-direction: column; align-items: center; min-height: 200px; }
-        .distribution-container { margin-top: 15px; width: 300px; border-bottom: 2px solid white; display: flex; justify-content: space-around; align-items: flex-end; height: 100px; }
-        .dist-column { width: 25px; display: flex; flex-direction: column-reverse; align-items: center; }
-        .dot { width: 8px; height: 8px; background-color: #00ff00; border-radius: 50%; margin-bottom: 2px; }
-        .axis-labels { width: 300px; display: flex; justify-content: space-around; font-size: 0.8rem; margin-top: 5px; color: white; }
-        .feedback-label { font-size: 1.1rem; margin-bottom: 10px; color: #aaa; }
-    </style>
-</head>
-<body>
+<script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJiDGJdxDNQ0fKGeaEvswrg0jbroZrSjQax9RBQSzyApwBsEgE-ydfYjoHQKDIoXI/exec";
+    
+    // Updated to match your specific filenames
+    const fileNames = [
+        "Image_1.jpg", "Image_2.jpg", "Image_3.jpg", "Image_4.jpg", "Image_5.jpg",
+        "Image_6.jpg", "Image_7.jpg", "Image_8.jpg", "Image_9.jpg", "Image_10.jpg",
+        "Image_11.jpg", "Image_12.jpg", "Image_13.jpg", "Image_14.jpg", "Image_15.jpg",
+        "Image_16.jpg", "Image_17.jpg", "Image_18.jpg", "Image_19.jpg", "Image_20.jpg"
+    ];
 
-    <div id="ui-container">
-        <div id="screen-welcome">
-            <h1>Welcome to the Study</h1>
-            <input type="text" id="participant-id" placeholder="Participant ID">
-            <br>
-            <button id="btn-start">Start Task</button>
-        </div>
+    // Since they are in the root directory, we pull them directly by name
+    const imagePool = fileNames.map(name => name);
 
-        <div id="screen-task" class="hidden">
-            <img id="stimulus-image" class="hidden">
-            <div id="rating-container" class="hidden">
-                <p>Rate the image you just saw (1 = Unpleasant, 10 = Pleasant):</p>
-                <div id="rating-buttons"></div>
-            </div>
-            <div id="feedback-area" class="hidden"></div>
-        </div>
+    let currentCondition = 4;
+    let participantId = "";
+    let phase = 1; 
+    let currentTrial = 0;
+    
+    let preRatings = new Array(20).fill(null);
+    let postRatings = new Array(20).fill(null);
+    let presentedAverages = new Array(20).fill(null);
+    let trialQueue = [];
 
-        <div id="screen-end" class="hidden">
-            <h2>Task Complete</h2>
-            <p id="status-message">Saving results...</p>
-        </div>
-    </div>
+    // All UI references
+    const stimImg = document.getElementById('stimulus-image');
+    const ratingContainer = document.getElementById('rating-container');
+    const feedbackArea = document.getElementById('feedback-area');
 
-    <script>
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJiDGJdxDNQ0fKGeaEvswrg0jbroZrSjQax9RBQSzyApwBsEgE-ydfYjoHQKDIoXI/exec";
-        const imgBase = "https://googleusercontent.com/profile/picture/2";
+    // Generate Rating Buttons 1-10
+    const btnBox = document.getElementById('rating-buttons');
+    for (let i = 1; i <= 10; i++) {
+        let btn = document.createElement('button');
+        btn.innerText = i; btn.className = 'rating-btn';
+        btn.onclick = () => handleRating(i);
+        btnBox.appendChild(btn);
+    }
+
+    document.getElementById('btn-start').onclick = async function() {
+        this.disabled = true;
+        this.innerText = "Initializing...";
+        try {
+            const response = await fetch(SCRIPT_URL);
+            const data = await response.json();
+            currentCondition = data.condition;
+        } catch (e) { currentCondition = 4; }
         
-        const imageIds = [
-            "1m198Xuct6TQuOtBTXQx2IFILDNXYGGyO", "1WtVv5mHkD_91dFG5mxljEosxP5t-k173", "1Ejo4uGMhOM-M4VO7tuVo5NnH6vfcrOJ-", 
-            "1vyKyW-7X1tFaJrQQ1elWCQUkubvdIBw2", "13jMn79V8-XX4u_uDyVnRyYT2_YQxnj1N", "134fHvJH4h6IZdtfSD38WDwhnfJvu1rtr",
-            "15MHxe_VxkRf5-_LiR7XYFx-JOk4ZIirI", "12lPF5NZzqEzQ8b3xkryQozu7ALAUnfdU", "1AcSCwwU79uVjAI5UoO4LfB0rZQMjkrFa",
-            "1zdQz7-B2-7X7x6MgWfgJUyYlYtgrZAvm", "1gXi8FoptPu_ELkW5K242dWmhSVp3lyMy", "1PgB6UQilthusXFrme_gqVTmM_E2i6oZ6",
-            "18mDtXFV2_D-kvoURGlb2iw1AqX8AItLh", "17czRE9i_258T5wiMixfv_0yxyHGqx6EV", "15kTbBo9ISngjnN0THDSecAiO5NY45c88",
-            "1EMU3-lbPU0f1BJwL1BxNRAX9a8kPIPuy", "1AYwUpU-ToFXSvj_CqwbNN-ybzsHe4HjZ", "1nszGqK_5k_rhqhd68YCVRqZIIJoT9G-X",
-            "1MXvb477skmSPhynWpvhktTrRbrh420VG", "1WBLs5HSsWzX3qUV_5M9mMCKw65yu_SEw"
-        ];
-
-        const imagePool = imageIds.map(id => imgBase + id);
-        let currentCondition = 4;
-        let participantId = "";
-        let phase = 1; 
-        let currentTrial = 0;
+        participantId = document.getElementById('participant-id').value.trim() || "ID_" + Math.random().toString(36).substr(2, 6).toUpperCase();
         
-        let preRatings = new Array(20).fill(null);
-        let postRatings = new Array(20).fill(null);
-        let presentedAverages = new Array(20).fill(null);
-        let trialQueue = [];
+        // Setup Phase 1 (Sequential)
+        trialQueue = imagePool.map((url, index) => ({ url, originalIndex: index }));
+        
+        document.getElementById('screen-welcome').classList.add('hidden');
+        document.getElementById('screen-task').classList.remove('hidden');
+        runTrial();
+    };
 
-        const stimImg = document.getElementById('stimulus-image');
-        const ratingContainer = document.getElementById('rating-container');
-        const feedbackArea = document.getElementById('feedback-area');
+    function runTrial() {
+        ratingContainer.classList.add('hidden');
+        feedbackArea.classList.add('hidden');
+        feedbackArea.innerHTML = ""; 
 
-        const btnBox = document.getElementById('rating-buttons');
-        for (let i = 1; i <= 10; i++) {
-            let btn = document.createElement('button');
-            btn.innerText = i; btn.className = 'rating-btn';
-            btn.onclick = () => handleRating(i);
-            btnBox.appendChild(btn);
+        // Load the image
+        stimImg.src = trialQueue[currentTrial].url;
+        stimImg.classList.remove('hidden');
+        
+        // Show for 2 seconds then move to rating
+        setTimeout(() => {
+            stimImg.classList.add('hidden');
+            ratingContainer.classList.remove('hidden');
+        }, 2000);
+    }
+
+    function handleRating(score) {
+        const originalIndex = trialQueue[currentTrial].originalIndex;
+        ratingContainer.classList.add('hidden');
+        
+        if (phase === 1) {
+            preRatings[originalIndex] = score; 
+            showFeedback(score, originalIndex);
+        } else {
+            postRatings[originalIndex] = score; 
+            nextTrial();
+        }
+    }
+
+    function showFeedback(userRating, originalIndex) {
+        feedbackArea.innerHTML = "";
+        const leanHigh = (userRating <= 5);
+        let avgScore = leanHigh ? (Math.floor(Math.random() * 5) + 6) : (Math.floor(Math.random() * 5) + 1);
+
+        if (currentCondition === 4) {
+            presentedAverages[originalIndex] = "N/A";
+            setTimeout(nextTrial, 1000);
+            return;
         }
 
-        document.getElementById('btn-start').onclick = async function() {
-            this.disabled = true;
-            this.innerText = "Initializing...";
-            try {
-                const response = await fetch(SCRIPT_URL);
-                const data = await response.json();
-                currentCondition = data.condition;
-            } catch (e) { currentCondition = 4; }
-            participantId = document.getElementById('participant-id').value.trim() || "ID_" + Math.random().toString(36).substr(2, 6).toUpperCase();
-            trialQueue = imagePool.map((url, index) => ({ url, originalIndex: index }));
-            document.getElementById('screen-welcome').classList.add('hidden');
-            document.getElementById('screen-task').classList.remove('hidden');
+        feedbackArea.classList.remove('hidden');
+
+        if (currentCondition === 2 || currentCondition === 3) {
+            presentedAverages[originalIndex] = avgScore;
+            const avgLabel = document.createElement('div');
+            avgLabel.className = 'feedback-label';
+            avgLabel.innerText = "Group average of ratings";
+            const avgValue = document.createElement('div');
+            avgValue.style.fontSize = "3rem";
+            avgValue.innerText = avgScore;
+            feedbackArea.appendChild(avgLabel);
+            feedbackArea.appendChild(avgValue);
+        } else {
+            presentedAverages[originalIndex] = "N/A";
+        }
+
+        if (currentCondition === 1 || currentCondition === 3) {
+            const distLabel = document.createElement('div');
+            distLabel.className = 'feedback-label';
+            distLabel.innerText = "Group distribution of ratings";
+            feedbackArea.appendChild(distLabel);
+            renderDistribution(feedbackArea, leanHigh);
+        }
+
+        setTimeout(nextTrial, 2000);
+    }
+
+    function renderDistribution(container, leanHigh) {
+        const distContainer = document.createElement('div');
+        distContainer.className = 'distribution-container';
+        const columns = Array.from({ length: 10 }, () => []);
+        for (let i = 0; i < 25; i++) {
+            let s;
+            const bias = Math.random() > 0.2;
+            if (leanHigh) s = bias ? (Math.floor(Math.random()*5)+6) : (Math.floor(Math.random()*5)+1);
+            else s = bias ? (Math.floor(Math.random()*5)+1) : (Math.floor(Math.random()*5)+6);
+            columns[s-1].push(1);
+        }
+        columns.forEach(colDots => {
+            const colDiv = document.createElement('div');
+            colDiv.className = 'dist-column';
+            colDots.forEach(() => {
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                colDiv.appendChild(dot);
+            });
+            distContainer.appendChild(colDiv);
+        });
+        container.appendChild(distContainer);
+        const labels = document.createElement('div');
+        labels.className = 'axis-labels';
+        labels.innerHTML = '<span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>';
+        container.appendChild(labels);
+    }
+
+    function nextTrial() {
+        feedbackArea.classList.add('hidden');
+        feedbackArea.innerHTML = "";
+        currentTrial++;
+        
+        if (currentTrial < 20) {
             runTrial();
-        };
-
-        function runTrial() {
-            // CRITICAL: Force reset of all trial-specific UI elements
-            ratingContainer.classList.add('hidden');
-            feedbackArea.classList.add('hidden');
-            feedbackArea.innerHTML = ""; 
-            
-            stimImg.src = trialQueue[currentTrial].url;
-            stimImg.classList.remove('hidden');
-            
-            setTimeout(() => {
-                stimImg.classList.add('hidden');
-                ratingContainer.classList.remove('hidden');
-            }, 2000);
-        }
-
-        function handleRating(score) {
-            const originalIndex = trialQueue[currentTrial].originalIndex;
-            ratingContainer.classList.add('hidden');
-            
-            if (phase === 1) {
-                preRatings[originalIndex] = score; 
-                showFeedback(score, originalIndex);
-            } else {
-                postRatings[originalIndex] = score; 
-                nextTrial();
-            }
-        }
-
-        function showFeedback(userRating, originalIndex) {
-            feedbackArea.innerHTML = "";
-            const leanHigh = (userRating <= 5);
-            let avgScore = leanHigh ? (Math.floor(Math.random() * 5) + 6) : (Math.floor(Math.random() * 5) + 1);
-
-            if (currentCondition === 4) {
-                presentedAverages[originalIndex] = "N/A";
-                setTimeout(nextTrial, 1000);
-                return;
-            }
-
-            feedbackArea.classList.remove('hidden');
-
-            if (currentCondition === 2 || currentCondition === 3) {
-                presentedAverages[originalIndex] = avgScore;
-                const avgLabel = document.createElement('div');
-                avgLabel.className = 'feedback-label';
-                avgLabel.innerText = "Group average of ratings";
-                const avgValue = document.createElement('div');
-                avgValue.style.fontSize = "2rem";
-                avgValue.innerText = avgScore;
-                feedbackArea.appendChild(avgLabel);
-                feedbackArea.appendChild(avgValue);
-            } else {
-                presentedAverages[originalIndex] = "N/A";
-            }
-
-            if (currentCondition === 1 || currentCondition === 3) {
-                const distLabel = document.createElement('div');
-                distLabel.className = 'feedback-label';
-                distLabel.innerText = "Group distribution of ratings";
-                feedbackArea.appendChild(distLabel);
-                renderDistribution(feedbackArea, leanHigh);
-            }
-
-            // Show feedback for 2 seconds before calling nextTrial
-            setTimeout(nextTrial, 2000);
-        }
-
-        function renderDistribution(container, leanHigh) {
-            const distContainer = document.createElement('div');
-            distContainer.className = 'distribution-container';
-            const columns = Array.from({ length: 10 }, () => []);
-            for (let i = 0; i < 25; i++) {
-                let s;
-                const bias = Math.random() > 0.2;
-                if (leanHigh) s = bias ? (Math.floor(Math.random()*5)+6) : (Math.floor(Math.random()*5)+1);
-                else s = bias ? (Math.floor(Math.random()*5)+1) : (Math.floor(Math.random()*5)+6);
-                columns[s-1].push(1);
-            }
-            columns.forEach(colDots => {
-                const colDiv = document.createElement('div');
-                colDiv.className = 'dist-column';
-                colDots.forEach(() => {
-                    const dot = document.createElement('div');
-                    dot.className = 'dot';
-                    colDiv.appendChild(dot);
-                });
-                distContainer.appendChild(colDiv);
-            });
-            container.appendChild(distContainer);
-            const labels = document.createElement('div');
-            labels.className = 'axis-labels';
-            labels.innerHTML = '<span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>';
-            container.appendChild(labels);
-        }
-
-        function nextTrial() {
-            // Clear feedback container explicitly before transition
+        } else if (phase === 1) {
             feedbackArea.classList.add('hidden');
             feedbackArea.innerHTML = "";
-            currentTrial++;
-            
-            if (currentTrial < 20) {
-                runTrial();
-            } else if (phase === 1) {
-                // PHASE TRANSITION LOGIC
-                // Crucial reset to prevent Phase 1 feedback from bleeding into Phase 2
-                feedbackArea.classList.add('hidden');
-                feedbackArea.innerHTML = "";
-                phase = 2; 
-                currentTrial = 0;
-                // Shuffle trial queue for Phase 2
-                trialQueue = trialQueue.sort(() => Math.random() - 0.5);
-                alert("Phase 1 complete. Press OK to continue.");
-                runTrial();
-            } else {
-                submitData();
-            }
+            phase = 2; 
+            currentTrial = 0;
+            // Shuffle for Phase 2
+            trialQueue = trialQueue.sort(() => Math.random() - 0.5);
+            alert("Phase 1 complete. Press OK to continue.");
+            runTrial();
+        } else {
+            submitData();
         }
+    }
 
-        function submitData() {
-            document.getElementById('screen-task').classList.add('hidden');
-            document.getElementById('screen-end').classList.remove('hidden');
-            fetch(SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors",
-                body: JSON.stringify({
-                    Participant_ID: participantId,
-                    Condition: "Cond_" + currentCondition,
-                    Image_Pre_Ratings: preRatings.join(","),
-                    Image_Post_Ratings: postRatings.join(","),
-                    Average_Presented: presentedAverages.join(",")
-                })
-            }).then(() => {
-                document.getElementById('status-message').innerText = "Data saved. Thank you!";
-            });
-        }
-    </script>
-</body>
-</html>
+    function submitData() {
+        document.getElementById('screen-task').classList.add('hidden');
+        document.getElementById('screen-end').classList.remove('hidden');
+        fetch(SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            body: JSON.stringify({
+                Participant_ID: participantId,
+                Condition: "Cond_" + currentCondition,
+                Image_Pre_Ratings: preRatings.join(","),
+                Image_Post_Ratings: postRatings.join(","),
+                Average_Presented: presentedAverages.join(",")
+            })
+        }).then(() => {
+            document.getElementById('status-message').innerText = "Data saved. Thank you!";
+        });
+    }
+</script>
