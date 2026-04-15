@@ -25,7 +25,7 @@
         .distribution-container { margin-top: 15px; width: 350px; border-bottom: 2px solid white; display: flex; justify-content: space-around; align-items: flex-end; height: 120px; }
         .dist-column { width: 30px; display: flex; flex-direction: column-reverse; align-items: center; }
         .dot { width: 10px; height: 10px; background-color: #00ff00; border-radius: 50%; margin-bottom: 3px; }
-        .axis-labels { width: 350px; display: flex; justify-content: space-around; font-size: 0.9rem; margin-top: 8px; color: white; }
+        .axis-labels { width: 350px; display: flex; justify-content: space-around; font-size: 0.8rem; margin-top: 8px; color: white; }
         .feedback-label { font-size: 1.3rem; margin-bottom: 15px; color: #ccc; }
     </style>
 </head>
@@ -37,6 +37,7 @@
             <input type="text" id="participant-id" placeholder="Participant ID">
             <br>
             <button id="btn-start">Start Task</button>
+            <p id="preload-status" style="color: #666; font-size: 0.9rem; margin-top: 10px;">Loading stimuli...</p>
         </div>
 
         <div id="screen-task" class="hidden">
@@ -58,7 +59,6 @@
     <script>
         const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyJiDGJdxDNQ0fKGeaEvswrg0jbroZrSjQax9RBQSzyApwBsEgE-ydfYjoHQKDIoXI/exec";
         
-        // Exact names based on your upload
         const fileNames = [
             "Image_1.jpg", "Image_2.jpg", "Image_3.jpg", "Image_4.jpg", "Image_5.jpg",
             "Image_6.jpg", "Image_7.jpg", "Image_8.jpg", "Image_9.jpg", "Image_10.jpg",
@@ -66,8 +66,29 @@
             "Image_16.jpg", "Image_17.jpg", "Image_18.jpg", "Image_19.jpg", "Image_20.jpg"
         ];
 
-        // Creates paths like "./Image_1.jpg"
         const imagePool = fileNames.map(name => "./" + name);
+
+        // --- PRELOAD LOGIC START ---
+        const preloadedImages = [];
+        let imagesLoadedCount = 0;
+
+        function preloadAllImages() {
+            imagePool.forEach((url) => {
+                const img = new Image();
+                img.src = url;
+                img.onload = () => {
+                    imagesLoadedCount++;
+                    if(imagesLoadedCount === imagePool.length) {
+                        document.getElementById('preload-status').innerText = "Stimuli ready.";
+                        document.getElementById('preload-status').style.color = "#00ff00";
+                    }
+                };
+                preloadedImages.push(img);
+            });
+        }
+        // Start preloading immediately
+        preloadAllImages();
+        // --- PRELOAD LOGIC END ---
 
         let currentCondition = 4;
         let participantId = "";
@@ -101,8 +122,6 @@
             } catch (e) { currentCondition = 4; }
             
             participantId = document.getElementById('participant-id').value.trim() || "ID_" + Math.random().toString(36).substr(2, 6).toUpperCase();
-            
-            // Phase 1 Order (Sequential)
             trialQueue = imagePool.map((url, index) => ({ url, originalIndex: index }));
             
             document.getElementById('screen-welcome').classList.add('hidden');
@@ -127,7 +146,6 @@
         function handleRating(score) {
             const originalIndex = trialQueue[currentTrial].originalIndex;
             ratingContainer.classList.add('hidden');
-            
             if (phase === 1) {
                 preRatings[originalIndex] = score; 
                 showFeedback(score, originalIndex);
@@ -215,7 +233,6 @@
                 feedbackArea.innerHTML = "";
                 phase = 2; 
                 currentTrial = 0;
-                // Random Shuffle for Phase 2
                 trialQueue = trialQueue.sort(() => Math.random() - 0.5);
                 alert("Phase 1 complete. Press OK to continue.");
                 runTrial();
